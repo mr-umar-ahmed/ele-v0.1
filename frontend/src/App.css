@@ -1,31 +1,165 @@
-.mic-btn {
-  background-color: #2a2a2a;
-  border: 1px solid #444;
-  color: white;
-  padding: 10px 15px;
-  border-radius: 8px;
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;800&display=swap');
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: 'Inter', sans-serif;
+  background-color: #050505;
+  color: #ffffff;
+  overflow: hidden;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 100vh;
+}
+
+.app-container {
+  position: relative;
+  width: 100vw;
+  height: 100vh;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+/* --- THE REACTIVE ORB --- */
+.glow-orb {
+  position: absolute;
+  width: 400px;
+  height: 400px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(255,255,255,0.1) 0%, rgba(0,0,0,0) 70%);
+  z-index: 0;
+  transition: all 0.5s ease;
+  filter: blur(40px);
+}
+
+.glow-orb.idle {
+  background: radial-gradient(circle, rgba(0, 255, 170, 0.15) 0%, rgba(0,0,0,0) 70%);
+  animation: breathe 4s infinite ease-in-out;
+}
+
+.glow-orb.listening {
+  background: radial-gradient(circle, rgba(0, 204, 255, 0.4) 0%, rgba(0,0,0,0) 70%);
+  animation: pulse 1.5s infinite ease-in-out;
+  transform: scale(1.2);
+}
+
+.glow-orb.thinking {
+  background: radial-gradient(circle, rgba(170, 0, 255, 0.3) 0%, rgba(0,0,0,0) 70%);
+  animation: spin 2s infinite linear;
+}
+
+.glow-orb.error {
+  background: radial-gradient(circle, rgba(255, 50, 50, 0.3) 0%, rgba(0,0,0,0) 70%);
+}
+
+/* --- THE GLASS PANEL --- */
+.glass-panel {
+  position: relative;
+  z-index: 1;
+  width: 90%;
+  max-width: 600px;
+  background: rgba(20, 20, 22, 0.6);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 24px;
+  padding: 40px;
+  box-shadow: 0 30px 60px rgba(0, 0, 0, 0.4);
+  display: flex;
+  flex-direction: column;
+  gap: 30px;
+}
+
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  padding-bottom: 20px;
+}
+
+.system-title {
+  font-size: 24px;
+  font-weight: 800;
+  letter-spacing: 2px;
+}
+
+.system-title span {
+  color: #00ffaa;
+  font-weight: 300;
+}
+
+.status-badge {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 1px;
+  padding: 6px 12px;
+  border-radius: 50px;
+  background: rgba(255, 255, 255, 0.1);
+  text-transform: uppercase;
+}
+
+.status-badge.listening { background: rgba(0, 204, 255, 0.2); color: #00ccff; }
+.status-badge.thinking { background: rgba(170, 0, 255, 0.2); color: #aa00ff; }
+.status-badge.error { background: rgba(255, 50, 50, 0.2); color: #ff3232; }
+
+/* --- CHAT LOG --- */
+.chat-log {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  min-height: 120px;
+}
+
+.message {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.label {
+  font-size: 10px;
+  color: rgba(255, 255, 255, 0.4);
+  letter-spacing: 1.5px;
+}
+
+.user-message p { font-size: 16px; color: #e0e0e0; }
+.ele-message p { font-size: 18px; color: #00ffaa; font-weight: 400; line-height: 1.5; }
+
+/* --- MICROPHONE BUTTON --- */
+.mic-button {
+  width: 100%;
+  padding: 16px;
+  border-radius: 12px;
+  border: none;
+  background: #ffffff;
+  color: #000000;
+  font-size: 16px;
+  font-weight: 600;
   cursor: pointer;
   transition: all 0.3s ease;
 }
 
-.mic-btn:hover {
-  background-color: #3a3a3a;
-}
+.mic-button:hover { background: #e0e0e0; transform: translateY(-2px); }
+.mic-button.active { background: #00ccff; color: #000; box-shadow: 0 0 20px rgba(0, 204, 255, 0.5); }
 
-.mic-btn.active {
-  background-color: #00ff88; /* Glowing emerald green when listening */
-  color: #000;
-  box-shadow: 0 0 10px #00ff88;
+/* --- ANIMATIONS --- */
+@keyframes breathe {
+  0%, 100% { transform: scale(1); opacity: 0.8; }
+  50% { transform: scale(1.05); opacity: 1; }
 }
-
-.status-dot.listening {
-  background-color: #00ff88;
-  box-shadow: 0 0 10px #00ff88;
-  animation: pulse 1s infinite;
-}
-
 @keyframes pulse {
-  0% { transform: scale(1); opacity: 1; }
-  50% { transform: scale(1.5); opacity: 0.5; }
-  100% { transform: scale(1); opacity: 1; }
+  0% { transform: scale(1); opacity: 0.5; }
+  50% { transform: scale(1.2); opacity: 1; }
+  100% { transform: scale(1); opacity: 0.5; }
+}
+@keyframes spin {
+  0% { transform: rotate(0deg) scale(1.1); }
+  100% { transform: rotate(360deg) scale(1.1); }
 }

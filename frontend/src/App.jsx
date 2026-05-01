@@ -1,112 +1,108 @@
-import { useState, useRef } from 'react';
-import './App.css'; 
+import { useState } from 'react';
+import './App.css';
 
-export default function App() {
-  const [input, setInput] = useState('');
-  const [logs, setLogs] = useState([]);
+function App() {
   const [isListening, setIsListening] = useState(false);
-  
-  // Set up the browser's native Speech Recognition API
-  const recognitionRef = useRef(null);
+  const [transcript, setTranscript] = useState('');
+  const [response, setResponse] = useState('ELE System Core Online. Awaiting command.');
+  const [status, setStatus] = useState('IDLE'); // States: IDLE, LISTENING, THINKING, ERROR
 
-  const startListening = () => {
-    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (!SpeechRecognition) {
-      alert("Your browser does not support Voice Input. Use Chrome or Edge.");
-      return;
-    }
-
-    const recognition = new SpeechRecognition();
-    recognition.continuous = false;
-    recognition.interimResults = false;
-    recognition.lang = 'en-US';
-
-    recognition.onstart = () => setIsListening(true);
-    
-    recognition.onresult = (event) => {
-      const transcript = event.results[0][0].transcript;
-      setInput(transcript); // Put the spoken words into the text box
-      handleCommand(transcript); // Automatically send it to the brain
-    };
-
-    recognition.onerror = (event) => {
-      console.error("Speech recognition error", event.error);
-      setIsListening(false);
-    };
-
-    recognition.onend = () => setIsListening(false);
-
-    recognition.start();
-    recognitionRef.current = recognition;
-  };
-
-  const handleCommand = async (textToProcess) => {
-    // Determine if the text came from the mic (textToProcess) or the typing box (input)
-    const userMessage = typeof textToProcess === 'string' ? textToProcess : input;
-    
-    if (!userMessage.trim()) return;
-
-    setLogs(prev => [...prev, `User: ${userMessage}`]);
-    setInput(''); 
+  const startListening = async () => {
+    // 1. Instantly update UI to show it's activating
+    setIsListening(true);
+    setStatus('LISTENING...');
+    setTranscript('');
+    setResponse('');
 
     try {
-      const response = await fetch('http://127.0.0.1:8000/api/chat', {
+      // 2. Tell Python to open the hardware microphone
+      const res = await fetch('http://127.0.0.1:8000/api/listen');
+      const data = await res.json();
+
+      // 3. Handle errors (like silence or mumbled words)
+      if (data.error) {
+        setStatus('ERROR');
+        setResponse(data.error);
+        setIsListening(false);
+        return;
+      }
+
+      // 4. Success! Python heard you. Show the text and send it to the brain.
+      setTranscript(data.text);
+      setStatus('THINKING...');
+      setIsListening(false); 
+      
+      await sendToBackend(data.text);
+
+    } catch (error) {
+      console.error("Mic error:", error);
+      setStatus('ERROR');
+      setResponse("Failed to connect to the Python Audio Engine.");
+      setIsListening(false);
+    }
+  };
+
+  const sendToBackend = async (text) => {
+    try {
+      const res = await fetch('http://127.0.0.1:8000/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text: userMessage, user_id: "dev_c" })
+        body: JSON.stringify({ text: text, user_id: 'umar' }) // Passed directly to FastAPI
       });
-      
-      if (!response.ok) throw new Error("Server error");
 
-      const data = await response.json();
-      setLogs(prev => [...prev, `ELE: ${data.reply}`]);
+      const data = await res.json();
+      setResponse(data.reply || `[Action Executed: ${data.intent}]`);
+      setStatus('IDLE');
 
-      // Execution Layer (Electron Bridge)
+      // If the backend says Electron needs to handle an OS action, trigger the bridge
       if (data.action_required && window.eleAPI) {
-         window.eleAPI.executeTask({ intent: data.intent, rawText: userMessage });
+         window.eleAPI.executeTask(data);
       }
 
     } catch (error) {
-      console.error(error);
-      setLogs(prev => [...prev, "Error: The Brain is asleep! Run: uvicorn main:app"]);
+      console.error("Backend error:", error);
+      setResponse("Critical connection failure to ELE Core.");
+      setStatus('ERROR');
     }
   };
 
   return (
     <div className="app-container">
-      <header>
-        <h1>ELE System Core</h1>
-        <div className={`status-dot ${isListening ? 'listening' : ''}`}></div>
-      </header>
+      {/* The Reactive Visualizer Orb */}
+      <div className={`glow-orb ${status.toLowerCase().replace('...', '')}`}></div>
       
-      <div className="chat-box">
-        {logs.map((log, index) => (
-          <div key={index} className={`log-entry ${log.startsWith('User') ? 'user' : 'ele'}`}>
-            {log}
+      <div className="glass-panel">
+        <div className="header">
+          <h1 className="system-title">ELE <span>CORE</span></h1>
+          <div className={`status-badge ${status.toLowerCase().replace('...', '')}`}>
+            {status}
           </div>
-        ))}
-      </div>
+        </div>
+        
+        <div className="chat-log">
+          {transcript && (
+            <div className="message user-message">
+              <span className="label">USER</span>
+              <p>{transcript}</p>
+            </div>
+          )}
+          {response && (
+            <div className="message ele-message">
+              <span className="label">ELE</span>
+              <p>{response}</p>
+            </div>
+          )}
+        </div>
 
-      <div className="input-area">
-        {/* NEW PUSH TO TALK BUTTON */}
         <button 
-            type="button" 
-            className={`mic-btn ${isListening ? 'active' : ''}`}
-            onClick={startListening}
+          className={`mic-button ${isListening ? 'active' : ''}`}
+          onClick={startListening}
         >
-            {isListening ? '🎙️ Listening...' : '🎤 Speak'}
+          {isListening ? 'Listening...' : 'Initialize Microphone'}
         </button>
-
-        <form onSubmit={(e) => { e.preventDefault(); handleCommand(input); }} style={{ display: 'flex', flexGrow: 1, marginLeft: '10px' }}>
-          <input 
-            type="text" 
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            placeholder="Or type a command..." 
-          />
-          <button type="submit">Send</button>
-        </form>
       </div>
     </div>
   );
 }
+
+export default App;

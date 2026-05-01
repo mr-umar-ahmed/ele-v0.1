@@ -1,81 +1,55 @@
-# ELE v0.1 (Execution-Focused AI System)
+# ELE: Autonomous Local Desktop OS
 
-ELE is a modular, task-executing AI system. This is the MVP (v0.1). It takes voice input, processes intent via an LLM, and executes local actions.
+ELE is a privacy-first, offline-capable AI desktop assistant. It bypasses standard browser sandboxes to interact directly with the local Windows operating system, hardware microphones, and application binaries.
 
-## 👥 Team Structure & Folders
+## 🚀 Architecture: What We Built (Sprints 1-5)
 
-* **`backend/` (Dev A - Core AI):** FastAPI server, Gemini LLM integration, intent detection, and memory.
-* **`voice/` (Friend 1 - Voice Layer):** Speech-to-text (STT), text-to-speech (TTS), and the audio interaction loop.
-* **`frontend/` (Friend 2 - UI & Execution):** React/Electron dashboard, command display, and system automation (opening apps, writing notes).
+* **The React + Electron Frontend:** A sleek, glassmorphic UI that acts as the visual terminal.
+* **The Python FastAPI Backend:** The core logic server that processes all commands and hardware requests.
+* **The Dual-Engine Brain:** 
+  * *Primary:* OpenRouter Cloud (Fast, lightweight).
+  * *Failover:* Local Ollama + Llama 3 (Triggers instantly if Wi-Fi drops, ensuring 100% offline uptime).
+* **The Python Ear:** Direct hardware microphone integration using `SpeechRecognition` and `PyAudio`, completely bypassing Electron's blocked web audio APIs.
+* **The Memory Layer:** A local SQLite database that logs conversation history for context awareness.
+* **The OS God Mode & App Automator:** Uses Python's `os` and `pyautogui` modules to execute system-level commands (Volume, Lock Screen) and launch development applications (VS Code, Chrome).
 
-## 🚀 How to Run the Backend (Core API)
+---
 
-Right now, the Core API is up and running with Gemini 1.5 Flash and Intent Detection. To run it locally:
+## 🛠️ Sprint 6: Team Task Delegation
 
-1. **Navigate to the backend:**
+The core infrastructure is stable. We are now splitting up to build the "Magic" features. Please claim a task and branch off `main`.
+
+### Task 1: The Wake Word Engine (Background Listener)
+* **Goal:** Remove the need to click the "Initialize Microphone" button. 
+* **Details:** Integrate a lightweight audio model (like Picovoice Porcupine) into the Python backend so ELE is always listening for "Hey ELE", triggering the main recording loop automatically.
+* **Assigned To:** [Teammate Name Here]
+
+### Task 2: The Real-Time Audio Visualizer
+* **Goal:** Make the frontend react to the user's voice.
+* **Details:** Update `App.jsx` to capture live microphone data and render a pulsing, dynamic waveform or glowing orb that changes based on pitch/volume and system state (Idle, Listening, Thinking).
+* **Assigned To:** [Teammate Name Here]
+
+### Task 3: Advanced Developer Workflows
+* **Goal:** Upgrade the App Automator to handle complex directory setups.
+* **Details:** Instead of just opening VS Code, teach Python to navigate to specific project folders, split the terminal, and automatically run `npm run dev` or Python virtual environments based on the project requested.
+* **Assigned To:** [Teammate Name Here]
+
+---
+
+## ⚙️ How to Run Locally
+
+1. **Start the Backend:**
    ```bash
    cd backend
-Create and activate a virtual environment:
+   venv\Scripts\activate
+   uvicorn main:app --reload
+Start the Frontend (Electron + Vite):
 
 Bash
-python -m venv venv
-# Windows: venv\Scripts\activate
-# Mac/Linux: source venv/bin/activate
-Install dependencies:
+cd frontend
+npm run dev
+npm run electron:start
 
-Bash
-pip install -r requirements.txt
-Environment Variables:
-Create a .env file in the backend/ folder and add your Gemini API key:
+### Step 2: Push to GitHub
+Once you have saved the `README.md`, open a new terminal in your root folder (outside of `backend` and `frontend`) and run these exact commands to push the entire Sprint 1-5 package to your repository.
 
-Code snippet
-GEMINI_API_KEY=your_api_key_here
-Start the server:
-
-Bash
-uvicorn main:app --reload
-Test the API: Open http://127.0.0.1:8000/docs in your browser.
-
-🔁 Git Workflow (MANDATORY)
-NEVER push directly to main.
-
-Always create a feature branch: git checkout -b feature/your-feature-name
-
-Push your branch and open a Pull Request (PR).
-
-Review and merge into main.
-
-
-### Step 2: Push Everything to GitHub
-Make sure you are on the `main` branch, then commit and push the README so your friends can see it.
-
-Run these commands in your terminal:
-```bash
-# Make sure you are on main and up to date
-git checkout main
-git pull origin main
-
-# Add the README
-git add README.md
-
-# Commit the changes
-git commit -m "docs: add project overview and setup instructions to README"
-
-# Push to the main repository
-git push origin main
-Step 3: Send This Message to Your Friends
-Copy and paste this message to your friends (Discord, WhatsApp, etc.) to get them moving:
-
-"Yo, the ELE monorepo is set up and the Core API (brain) is live on the main branch. It connects to Gemini and has intent detection working (chat, open_app, search_web, create_note).
-
-Action items:
-
-git pull origin main to get the latest code.
-
-Read the README.md for instructions on how to spin up the backend locally. You'll need your own free Gemini API key in a .env file to test it.
-
-Friend 1 (Voice): Start setting up the STT script in the voice/ folder. We need it to capture mic input and send the text to http://127.0.0.1:8000/api/chat.
-
-Friend 2 (Frontend): Start scaffolding the React app in the frontend/ folder. Build a basic UI that can hit the API and display the returned intent and reply. Let's go! 🚀"
-
-Once they pull the code, the ball is in their court to start building the UI and Voice modules.
