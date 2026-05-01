@@ -1,64 +1,76 @@
 import os
 import json
-import re
 from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from google import genai  # NEW SDK
+from openai import OpenAI
 from dotenv import load_dotenv
 
-# 1. Setup
 load_dotenv()
-# The new SDK automatically looks for GEMINI_API_KEY env var
-client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
 
-app = FastAPI()
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+# Initialize the client pointing to OpenRouter instead of OpenAI
+client = OpenAI(
+    base_url="https://openrouter.ai/api/v1",
+    api_key=os.getenv("OPENROUTER_API_KEY"),
 )
+
+app = FastAPI(title="ELE Core API", version="0.3")
 
 class UserInput(BaseModel):
     text: str
-    user_id: str = "dev_c"
+    user_id: str = "default_user"
 
-@app.post("/api/chat")
+class AIResponse(BaseModel):
+    reply: str
+    intent: str
+    action_required: bool
+
+@app.get("/")
+async def health_check():
+    return {"status": "ELE Backend is running on OpenRouter (Llama 3)."}
+
+@app.post("/api/chat", response_model=AIResponse)
 async def process_chat(user_input: UserInput):
-    print(f"User Request: {user_input.text}")
+    print(f"\nUser says: {user_input.text}")
+    
     try:
-        # 2. Use the new 'models.generate' syntax
-        response = client.models.generate_content(
-            model='gemini-2.0-flash', # Use the latest stable 2026 model
-            contents=user_input.text,
-            config={
-                'system_instruction': "You are ELE. Respond ONLY in valid JSON. Schema: {\"reply\": \"text\", \"intent\": \"chat|open_app|search_web\", \"action_required\": bool}"
-            }
+        # Call the free Llama 3 model via OpenRouter
+        response = client.chat.completions.create(
+            model="meta-llama/llama-3-8b-instruct:free",
+            messages=[
+                {
+                    "role": "system", 
+                    "content": """You are ELE, an execution-focused AI assistant. 
+                    Always respond in strict, valid JSON format. 
+                    Analyze the user's input and determine the correct intent.
+                    The intent MUST be exactly one of these strings: 'chat', 'open_app', 'search_web', 'create_note'.
+                    If the intent is anything other than 'chat', set action_required to true.
+                    Your JSON schema must be exactly: {"reply": "Your conversational response", "intent": "the intent", "action_required": true or false}"""
+                },
+                {"role": "user", "content": user_input.text}
+            ]
         )
         
-        raw_text = response.text.strip()
-        print(f"AI Output: {raw_text}")
-
-        # 3. Robust JSON Extraction
-        json_match = re.search(r'\{.*\}', raw_text, re.DOTALL)
-        if json_match:
-            data = json.loads(json_match.group())
-            return {
-                "reply": data.get("reply", "Understood."),
-                "intent": data.get("intent", "chat"),
-                "action_required": data.get("action_required", False) or (data.get("intent") != "chat")
-            }
+        # Extract and clean the text
+        raw_text = response.choices[0].message.content.strip()
         
-        # Manual Fallback if AI skips JSON
-        return {"reply": raw_text, "intent": "chat", "action_required": False}
-
+        if raw_text.startswith("```json"):
+            raw_text = raw_text[7:]
+        if raw_text.endswith("```"):
+            raw_text = raw_text[:-3]
+            
+        parsed_data = json.loads(raw_text)
+        print(f"ELE intent: {parsed_data.get('intent')}")
+        
+        return AIResponse(
+            reply=parsed_data.get("reply", "Understood."),
+            intent=parsed_data.get("intent", "chat"),
+            action_required=parsed_data.get("action_required", False)
+        )
+        
     except Exception as e:
-        print(f"New SDK Error: {e}")
-        return {"reply": "Connection issue with Gemini 2.0.", "intent": "error", "action_required": False}
-
-if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run(app, host="127.0.0.1", port=8000)
+        print(f"System Error: {e}")
+        return AIResponse(
+            reply="My new Llama brain hit a snag.",
+            intent="error",
+            action_required=False
+        )

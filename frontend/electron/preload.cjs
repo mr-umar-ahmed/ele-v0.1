@@ -1,6 +1,6 @@
-const { contextBridge } = require('electron');
+const { contextBridge, ipcRenderer } = require('electron');
 
-// This is a secure bridge between your React "Face" and Electron "Hands"
+// This exposes 'window.eleAPI' to React safely
 contextBridge.exposeInMainWorld('eleAPI', {
-    // We will add commands here later!
+    executeTask: (data) => ipcRenderer.send('execute-task', data)
 });
