@@ -1,8 +1,8 @@
-const { app, BrowserWindow, ipcMain } = require('electron');
+const { app, BrowserWindow, ipcMain, shell } = require('electron');
 const path = require('path');
-const { exec } = require('child_process'); // This lets Node run terminal commands
+const fs = require('fs');
 
-function createWindow () {
+function createWindow() {
   const win = new BrowserWindow({
     width: 1000,
     height: 700,
@@ -18,6 +18,18 @@ function createWindow () {
 
 app.whenReady().then(() => {
   createWindow();
+
+  app.on('activate', () => {
+    if (BrowserWindow.getAllWindows().length === 0) {
+      createWindow();
+    }
+  });
+});
+
+app.on('window-all-closed', () => {
+  if (process.platform !== 'darwin') {
+    app.quit();
+  }
 });
 
 // ==========================================
@@ -26,26 +38,39 @@ app.whenReady().then(() => {
 ipcMain.on('execute-task', (event, payload) => {
   console.log(`[ELE EXECUTION] Intent Received: ${payload.intent}`);
 
+  // ACTION 1: OPEN APP (Upgraded to Native Shell)
   if (payload.intent === 'open_app') {
-    console.log("Opening browser...");
+    console.log("Executing: Open Browser natively...");
     
-    // Cross-platform command to open the default browser
-    let command;
-    if (process.platform === 'win32') {
-        command = 'start https://google.com'; // Windows
-    } else if (process.platform === 'darwin') {
-        command = 'open https://google.com'; // Mac
-    } else {
-        command = 'xdg-open https://google.com'; // Linux
-    }
-
-    exec(command, (error, stdout, stderr) => {
-        if (error) {
-            console.error(`Execution Error: ${error.message}`);
-            return;
-        }
+    // shell.openExternal flawlessly handles OS-level default browser launching
+    shell.openExternal('https://google.com').catch(err => {
+        console.error(`Failed to open browser: ${err}`);
     });
   }
   
-  // TODO: Add 'create_note' logic next
+  // ACTION 2: CREATE NOTE
+  else if (payload.intent === 'create_note') {
+    console.log("Executing: Create Note...");
+    
+    // Create a 'notes' folder in the project root if it doesn't exist
+    const notesDir = path.join(app.getAppPath(), '../../notes');
+    if (!fs.existsSync(notesDir)){
+        fs.mkdirSync(notesDir);
+    }
+
+    // Create a filename based on the timestamp
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const filePath = path.join(notesDir, `note_${timestamp}.txt`);
+
+    // Write the raw text from the user into the file
+    const noteContent = `ELE NOTE RECORD\nCreated: ${new Date().toLocaleString()}\n---\n${payload.rawText}`;
+    
+    fs.writeFile(filePath, noteContent, (err) => {
+        if (err) {
+            console.error(`Failed to write note: ${err.message}`);
+        } else {
+            console.log(`Note successfully saved to ${filePath}`);
+        }
+    });
+  }
 });

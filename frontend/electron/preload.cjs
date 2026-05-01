@@ -1,6 +1,6 @@
 const { contextBridge, ipcRenderer } = require('electron');
 
-// This exposes 'window.eleAPI' to React safely
+// This explicitly exposes a secure tunnel from React to Node.js
 contextBridge.exposeInMainWorld('eleAPI', {
-    executeTask: (data) => ipcRenderer.send('execute-task', data)
+    executeTask: (payload) => ipcRenderer.send('execute-task', payload)
 });

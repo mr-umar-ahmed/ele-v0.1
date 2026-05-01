@@ -1,36 +1,31 @@
-body {
-  background-color: #121212;
-  color: #00FF9D; /* Cool hacker green */
-  font-family: Arial, sans-serif;
-  margin: 0;
-}
-.app-container {
-  padding: 30px;
-}
-.chat-box {
-  background-color: #1e1e1e;
-  height: 350px;
-  padding: 15px;
-  overflow-y: auto;
-  border-radius: 8px;
-  margin-bottom: 20px;
-  border: 1px solid #333;
-}
-input {
-  width: 75%;
-  padding: 12px;
-  background-color: #333;
+.mic-btn {
+  background-color: #2a2a2a;
+  border: 1px solid #444;
   color: white;
-  border: 1px solid #555;
-  border-radius: 4px;
-}
-button {
-  padding: 12px 20px;
-  background-color: #00FF9D;
-  color: black;
-  font-weight: bold;
-  border: none;
-  border-radius: 4px;
+  padding: 10px 15px;
+  border-radius: 8px;
   cursor: pointer;
-  margin-left: 10px;
+  transition: all 0.3s ease;
+}
+
+.mic-btn:hover {
+  background-color: #3a3a3a;
+}
+
+.mic-btn.active {
+  background-color: #00ff88; /* Glowing emerald green when listening */
+  color: #000;
+  box-shadow: 0 0 10px #00ff88;
+}
+
+.status-dot.listening {
+  background-color: #00ff88;
+  box-shadow: 0 0 10px #00ff88;
+  animation: pulse 1s infinite;
+}
+
+@keyframes pulse {
+  0% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(1.5); opacity: 0.5; }
+  100% { transform: scale(1); opacity: 1; }
 }
