@@ -2,6 +2,7 @@ import os
 import json
 import sqlite3
 import pyautogui
+from routers import voice
 from datetime import datetime
 from fastapi import FastAPI
 from pydantic import BaseModel
@@ -9,7 +10,6 @@ from openai import OpenAI
 from dotenv import load_dotenv
 from fastapi.middleware.cors import CORSMiddleware
 from duckduckgo_search import DDGS
-import speech_recognition as sr
 
 # 1. Load Environment Variables
 load_dotenv()
@@ -68,7 +68,8 @@ def perform_web_search(query: str):
         if not results: return "No results found."
         
         context = ""
-        for i, res in enumerate(results): context += f"Result {i+1}: {res.get('body')}\n"
+        for i, res in enumerate(results): 
+            context += f"Result {i+1}: {res.get('body')}\n"
         return context
     except Exception as e:
         print(f"[SYSTEM] Search failed: {e}")
@@ -108,6 +109,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+app.include_router(voice.router, prefix="/api/voice", tags=["Voice Module"])
+
 class UserInput(BaseModel):
     text: str
     user_id: str = "default_user"
@@ -120,34 +123,6 @@ class AIResponse(BaseModel):
 @app.get("/")
 async def health_check():
     return {"status": "ELE Backend is online. App Automator active."}
-
-# ==========================================
-# 🎤 THE PYTHON EAR (Hardware Mic Access)
-# ==========================================
-@app.get("/api/listen")
-async def listen_to_mic():
-    print("\n[AUDIO] Waking up microphone...")
-    r = sr.Recognizer()
-    
-    with sr.Microphone() as source:
-        print("[AUDIO] Adjusting for ambient noise...")
-        r.adjust_for_ambient_noise(source, duration=1)
-        print("[AUDIO] Listening now...")
-        
-        try:
-            audio = r.listen(source, timeout=5, phrase_time_limit=10)
-            print("[AUDIO] Processing voice data...")
-            
-            text = r.recognize_google(audio)  # type: ignore
-            print(f"[AUDIO] Heard: {text}")
-            return {"text": text}
-            
-        except sr.WaitTimeoutError:
-            return {"error": "Listening timed out. No speech detected."}
-        except sr.UnknownValueError:
-            return {"error": "Could not understand the audio."}
-        except sr.RequestError as e:
-            return {"error": f"Speech API error: {e}"}
 
 # ==========================================
 # 🧠 CORE CHAT ENGINE
@@ -227,13 +202,13 @@ async def process_chat(user_input: UserInput):
             
             try:
                 response2 = client_cloud.chat.completions.create(model="openrouter/free", messages=messages) # type: ignore
-            except:
-                response2 = client_local.chat.completions.create(model="llama3", messages=messages) # type: ignore
-                
-            raw_text2 = (response2.choices[0].message.content or "").strip()
-            if raw_text2.startswith("```json"): raw_text2 = raw_text2[7:]
-            if raw_text2.endswith("```"): raw_text2 = raw_text2[:-3]
-            parsed_data = json.loads(raw_text2) 
+                raw_text2 = (response2.choices[0].message.content or "").strip()
+                if raw_text2.startswith("```json"): raw_text2 = raw_text2[7:]
+                if raw_text2.endswith("```"): raw_text2 = raw_text2[:-3]
+                parsed_data = json.loads(raw_text2) 
+            except Exception:
+                # If both engines fail during search summary, fallback safely
+                parsed_data["reply"] = f"I found some information, but had trouble summarizing it: {search_data[:100]}..."
             
         # --- PASS 2.B: OS System Control Interception ---
         elif current_intent == "system_control":
@@ -250,7 +225,7 @@ async def process_chat(user_input: UserInput):
             
             try:
                 if "chrome" in app_to_open:
-                    os.system("start chrome")
+                    os.system("start chrome --new-window")
                     parsed_data["reply"] = "Opening Google Chrome."
                 elif "code" in app_to_open or "vs code" in app_to_open or "vscode" in app_to_open:
                     os.system("code")
