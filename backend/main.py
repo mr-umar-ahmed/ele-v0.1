@@ -2,7 +2,7 @@ import os
 import json
 import sqlite3
 import pyautogui
-from routers import voice
+import subprocess
 from datetime import datetime
 from fastapi import FastAPI
 from pydantic import BaseModel
@@ -10,6 +10,7 @@ from openai import OpenAI
 from dotenv import load_dotenv
 from fastapi.middleware.cors import CORSMiddleware
 from duckduckgo_search import DDGS
+import speech_recognition as sr
 
 # 1. Load Environment Variables
 load_dotenv()
@@ -68,8 +69,7 @@ def perform_web_search(query: str):
         if not results: return "No results found."
         
         context = ""
-        for i, res in enumerate(results): 
-            context += f"Result {i+1}: {res.get('body')}\n"
+        for i, res in enumerate(results): context += f"Result {i+1}: {res.get('body')}\n"
         return context
     except Exception as e:
         print(f"[SYSTEM] Search failed: {e}")
@@ -96,10 +96,49 @@ def execute_system_control(action: str):
         print(f"[OS ERROR] {e}")
         return "Execution failed."
 
+def launch_dev_environment(project_name: str):
+    print(f"\n[DEV AUTOMATOR] Initializing workflow for: {project_name}")
+    
+    # Your master projects directory
+    base_path = r"C:\Users\DELL\OneDrive\Desktop\PROJECTS"
+    
+    # Map spoken names to actual folder names
+    project_map = {
+        "save era": "save_era",
+        "shop sync": "shopsync",
+        "shopsync": "shopsync",
+        "ele core": "ele-v0.1",
+        "ele": "ele-v0.1"
+    }
+    
+    target_folder = project_map.get(project_name.lower())
+    
+    if not target_folder:
+        return f"Could not find a project mapping for {project_name}."
+
+    full_path = os.path.join(base_path, target_folder)
+    
+    if not os.path.exists(full_path):
+        return f"Project folder {target_folder} does not exist in your workspace."
+
+    try:
+        # 1. Open Visual Studio Code in the project directory
+        os.system(f'code "{full_path}"')
+        
+        # 2. Open a new terminal window and run the dev server
+        # Note: We use 'start cmd' to launch a separate terminal so it doesn't block ELE's server
+        launch_cmd = f'start cmd /k "cd /d {full_path} && echo Starting Dev Server... && npm run dev"'
+        subprocess.Popen(launch_cmd, shell=True)
+        
+        return f"Developer environment for {project_name} initialized. VS Code and local servers are spinning up."
+    except Exception as e:
+        print(f"[DEV ERROR] {e}")
+        return "Failed to launch the development environment."
+
 # ==========================================
 # 🚀 FASTAPI & ROUTER LAYER
 # ==========================================
-app = FastAPI(title="ELE Core API", version="1.1 (App Automator + Master Prompt)")
+app = FastAPI(title="ELE Core API", version="1.5 (Dev Automator Active)")
 
 app.add_middleware(
     CORSMiddleware,
@@ -108,8 +147,6 @@ app.add_middleware(
     allow_methods=["*"],  
     allow_headers=["*"],
 )
-
-app.include_router(voice.router, prefix="/api/voice", tags=["Voice Module"])
 
 class UserInput(BaseModel):
     text: str
@@ -122,7 +159,77 @@ class AIResponse(BaseModel):
 
 @app.get("/")
 async def health_check():
-    return {"status": "ELE Backend is online. App Automator active."}
+    return {"status": "ELE Backend is online. Stealth Daemon & Dev Automator active."}
+
+# ==========================================
+# 🛑 THE WAKE WORD DAEMON (OpenWakeWord)
+# ==========================================
+oww_model = None
+
+@app.get("/api/wakeword")
+async def listen_for_wakeword():
+    global oww_model
+    print("\n[ELE DAEMON] Initializing stealth acoustic daemon...")
+    try:
+        import pyaudio
+        import numpy as np
+        from openwakeword.model import Model
+
+        if oww_model is None:
+            print("[ELE DAEMON] Loading acoustic neural network into memory...")
+            oww_model = Model(wakeword_models=['hey_jarvis'])
+
+        FORMAT = pyaudio.paInt16
+        CHANNELS = 1
+        RATE = 16000
+        CHUNK = 1280
+        audio = pyaudio.PyAudio()
+        
+        mic_stream = audio.open(format=FORMAT, channels=CHANNELS, rate=RATE, input=True, frames_per_buffer=CHUNK)
+        print("[ELE DAEMON] 🟢 Listening silently in the background...")
+        
+        while True:
+            audio_data = np.frombuffer(mic_stream.read(CHUNK, exception_on_overflow=False), dtype=np.int16)
+            prediction = oww_model.predict(audio_data)
+            
+            if isinstance(prediction, dict) and prediction.get('hey_jarvis', 0) > 0.5:
+                print("\n[ELE DAEMON] 🔥 WAKE WORD DETECTED! Waking up ELE Core...")
+                mic_stream.stop_stream()
+                mic_stream.close()
+                audio.terminate()
+                return {"status": "detected", "wake_word": "ele_triggered"}
+                
+    except Exception as e:
+        print(f"[DAEMON ERROR] {e}")
+        return {"error": str(e)}
+
+# ==========================================
+# 🎤 THE PYTHON EAR (Main Command Listener)
+# ==========================================
+@app.get("/api/listen")
+async def listen_to_mic():
+    print("\n[ELE CORE] Waking up main microphone for command...")
+    r = sr.Recognizer()
+    
+    with sr.Microphone() as source:
+        print("[ELE CORE] Adjusting for ambient noise...")
+        r.adjust_for_ambient_noise(source, duration=0.5)
+        print("[ELE CORE] Listening for your command now...")
+        
+        try:
+            audio = r.listen(source, timeout=5, phrase_time_limit=10)
+            print("[ELE CORE] Processing voice data...")
+            
+            text = r.recognize_google(audio)  # type: ignore
+            print(f"[ELE CORE] Heard: {text}")
+            return {"text": text}
+            
+        except sr.WaitTimeoutError:
+            return {"error": "Listening timed out. No speech detected."}
+        except sr.UnknownValueError:
+            return {"error": "Could not understand the audio."}
+        except sr.RequestError as e:
+            return {"error": f"Speech API error: {e}"}
 
 # ==========================================
 # 🧠 CORE CHAT ENGINE
@@ -137,39 +244,32 @@ async def process_chat(user_input: UserInput):
         messages = [
             {
                 "role": "system", 
-                "content": f"""You are ELE, an execution-focused autonomous agent. 
+                "content": f"""You are ELE, an execution-focused autonomous OS agent. 
                 Today's date is {current_date}.
                 Always respond in strict, valid JSON format. Do not include extra text.
                 
                 CRITICAL RULES:
                 1. NEVER apologize or say you cannot do something.
-                2. NEVER say "I am an AI." You control the OS.
-                3. Intents available: 'chat', 'open_app', 'create_note', 'search_web', 'system_control'.
-                4. OPEN APP: If the user says "open [app]", intent MUST be 'open_app', and action_detail MUST be the app name (e.g., 'chrome', 'vscode').
+                2. Intents available: 'chat', 'open_app', 'create_note', 'search_web', 'system_control', 'dev_workflow'.
+                3. CHAT INTENT: For general conversation, answering questions, or greetings.
+                4. APP INTENT: ONLY use 'open_app' if the user explicitly commands you to open a basic application.
+                5. DEV WORKFLOW: If the user asks to "work on", "launch", or "open project" (e.g., "let's work on Save Era"), use intent 'dev_workflow' and set action_detail to the project name.
                 
                 EXAMPLES OF CORRECT RESPONSES:
-                User: "open chrome"
-                Assistant: {{"reply": "Opening Google Chrome.", "intent": "open_app", "search_query": "", "action_detail": "chrome", "action_required": false}}
-                
-                User: "mute the volume"
-                Assistant: {{"reply": "Muting volume.", "intent": "system_control", "search_query": "", "action_detail": "mute", "action_required": false}}
-                
-                User: "what is the capital of France?"
-                Assistant: {{"reply": "The capital of France is Paris.", "intent": "chat", "search_query": "", "action_detail": "", "action_required": false}}
+                User: "Let's work on Save Era"
+                Assistant: {{"reply": "Initializing developer environment for Save Era.", "intent": "dev_workflow", "search_query": "", "action_detail": "save era", "action_required": false}}
                 
                 Your JSON schema MUST be exactly: 
                 {{"reply": "Your response", "intent": "the_intent", "search_query": "query", "action_detail": "detail", "action_required": true/false}}"""
             }
         ]
         
-        # Load Memory
         past_context = get_memory(limit=8)
         for msg in past_context:
             messages.append(msg)
             
         messages.append({"role": "user", "content": user_input.text})
 
-        # Dual-Engine Failover Loop
         try:
             print("[SYSTEM] Firing Engine A (OpenRouter Cloud)...")
             response = client_cloud.chat.completions.create(
@@ -202,13 +302,13 @@ async def process_chat(user_input: UserInput):
             
             try:
                 response2 = client_cloud.chat.completions.create(model="openrouter/free", messages=messages) # type: ignore
-                raw_text2 = (response2.choices[0].message.content or "").strip()
-                if raw_text2.startswith("```json"): raw_text2 = raw_text2[7:]
-                if raw_text2.endswith("```"): raw_text2 = raw_text2[:-3]
-                parsed_data = json.loads(raw_text2) 
-            except Exception:
-                # If both engines fail during search summary, fallback safely
-                parsed_data["reply"] = f"I found some information, but had trouble summarizing it: {search_data[:100]}..."
+            except:
+                response2 = client_local.chat.completions.create(model="llama3", messages=messages) # type: ignore
+                
+            raw_text2 = (response2.choices[0].message.content or "").strip()
+            if raw_text2.startswith("```json"): raw_text2 = raw_text2[7:]
+            if raw_text2.endswith("```"): raw_text2 = raw_text2[:-3]
+            parsed_data = json.loads(raw_text2) 
             
         # --- PASS 2.B: OS System Control Interception ---
         elif current_intent == "system_control":
@@ -225,7 +325,7 @@ async def process_chat(user_input: UserInput):
             
             try:
                 if "chrome" in app_to_open:
-                    os.system("start chrome --new-window")
+                    os.system("start chrome")
                     parsed_data["reply"] = "Opening Google Chrome."
                 elif "code" in app_to_open or "vs code" in app_to_open or "vscode" in app_to_open:
                     os.system("code")
@@ -234,7 +334,6 @@ async def process_chat(user_input: UserInput):
                     os.system("notepad")
                     parsed_data["reply"] = "Opening Notepad."
                 else:
-                    # Generic Windows fallback for other apps
                     os.system(f"start {app_to_open}")
                     parsed_data["reply"] = f"Attempting to launch {app_to_open}."
             except Exception as e:
@@ -242,7 +341,14 @@ async def process_chat(user_input: UserInput):
                 
             parsed_data["action_required"] = False 
 
-        # Save Memory
+        # --- PASS 2.D: Dev Automator Interception ---
+        elif current_intent == "dev_workflow":
+            project = parsed_data.get("action_detail")
+            if project:
+                dev_result = launch_dev_environment(project)
+                parsed_data["reply"] = dev_result
+                parsed_data["action_required"] = False
+
         save_memory("user", user_input.text)
         save_memory("assistant", json.dumps(parsed_data))
         

@@ -53,3 +53,16 @@ npm run electron:start
 ### Step 2: Push to GitHub
 Once you have saved the `README.md`, open a new terminal in your root folder (outside of `backend` and `frontend`) and run these exact commands to push the entire Sprint 1-5 package to your repository.
 
+## 🚀 Sprint 6 Updates (ELE Core Daemon)
+We have successfully upgraded ELE from a click-to-talk chatbot to a hands-free, autonomous background daemon.
+
+**New Features Engineered:**
+* **Stealth Wake Word Engine:** Integrated `openwakeword` for a zero-click, offline background listener. (Currently using the "Hey Jarvis" acoustic model as a placeholder for ELE).
+* **Python Audio Bridge:** Bypassed Electron's strict microphone API blocks by building a custom hardware audio router in FastAPI using `speech_recognition` and `PyAudio`.
+* **SQLite Memory Layer:** Added short-term contextual memory so ELE remembers conversational facts without breaking OS commands.
+* **Developer Automator:** Added the `dev_workflow` intent. ELE can now dynamically locate project folders (like Save Era or ShopSync AI), launch VS Code, and spin up local `npm run dev` servers via voice command.
+
+**Setup Instructions for Teammates:**
+1. Pull the latest code.
+2. Navigate to `/backend` and run `pip install -r requirements.txt`.
+3. You may need to install standard C++ build tools if `PyAudio` throws a compilation error on Windows.

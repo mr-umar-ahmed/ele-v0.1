@@ -1,113 +1,130 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import './App.css';
 
-export default function App() {
+function App() {
   const [isListening, setIsListening] = useState(false);
   const [transcript, setTranscript] = useState('');
-  const [aiResponse, setAiResponse] = useState('');
-  const [textInput, setTextInput] = useState(''); // New state for typing
+  const [response, setResponse] = useState('ELE Stealth Daemon Online. Awaiting wake word.');
+  const [status, setStatus] = useState('IDLE'); // States: IDLE, LISTENING, THINKING, ERROR
 
-  // The function to send text to the backend
-  const sendToBackend = async (textToSend) => {
+  // 1. Define the functions FIRST so React knows they exist
+  const startWakeWordListener = async () => {
     try {
-      setAiResponse("Thinking...");
-      const response = await fetch('http://127.0.0.1:8000/api/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text: textToSend, user_id: "testing_user" })
-      });
+      // This fetch will "hang" silently until the Python backend hears the trigger
+      const res = await fetch('http://127.0.0.1:8000/api/wakeword');
+      const data = await res.json();
 
-      if (!response.ok) throw new Error("Backend connection failed");
+      if (data.status === 'detected') {
+        // Wake word heard! Trigger the main microphone automatically.
+        startListening();
+      }
+    } catch (error) {
+      console.error("Wake Word connection lost. Retrying...", error);
+      setTimeout(startWakeWordListener, 5000); // Try again in 5 seconds if server drops
+    }
+  };
+
+  const startListening = async () => {
+    setIsListening(true);
+    setStatus('LISTENING...');
+    setTranscript('');
+    setResponse('');
+
+    try {
+      const res = await fetch('http://127.0.0.1:8000/api/listen');
+      const data = await res.json();
+
+      if (data.error) {
+        setStatus('ERROR');
+        setResponse(data.error);
+        setIsListening(false);
+        startWakeWordListener(); // Restart stealth listener
+        return;
+      }
+
+      setTranscript(data.text);
+      setStatus('THINKING...');
+      setIsListening(false); 
       
-      const data = await response.json();
-      setAiResponse(data.reply); 
+      await sendToBackend(data.text);
 
     } catch (error) {
-      console.error("Connection Error:", error);
-      setAiResponse("Error: Could not reach ELE Core. Is the backend running?");
+      console.error("Mic error:", error);
+      setStatus('ERROR');
+      setResponse("Failed to connect to the Python Audio Engine.");
+      setIsListening(false);
+      startWakeWordListener(); // Restart stealth listener
     }
   };
 
-  // The Voice Engine
-  const handleVoiceInput = () => {
-    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (!SpeechRecognition) {
-      alert("Browser unsupported. Use Chrome or Edge.");
-      return;
+  const sendToBackend = async (text) => {
+    try {
+      const res = await fetch('http://127.0.0.1:8000/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: text, user_id: 'umar' }) 
+      });
+
+      const data = await res.json();
+      setResponse(data.reply || `[Action Executed: ${data.intent}]`);
+      setStatus('IDLE');
+
+      if (data.action_required && window.eleAPI) {
+         window.eleAPI.executeTask(data);
+      }
+
+    } catch (error) {
+      console.error("Backend error:", error);
+      setResponse("Critical connection failure to ELE Core.");
+      setStatus('ERROR');
+    } finally {
+      // Once the action is totally complete, go back into stealth mode!
+      startWakeWordListener();
     }
-
-    const recognition = new SpeechRecognition();
-    recognition.continuous = false;
-    recognition.interimResults = false;
-    recognition.lang = 'en-US';
-
-    recognition.onstart = () => {
-      setIsListening(true);
-      setTranscript('Listening... Speak now!');
-      setAiResponse('');
-    };
-
-    recognition.onresult = (event) => {
-      const text = event.results[0][0].transcript;
-      setTranscript(text);
-      setIsListening(false);
-      sendToBackend(text); // Send the spoken text
-    };
-
-    recognition.onerror = (event) => {
-      // Better error logging!
-      console.error("Microphone error code:", event.error);
-      setTranscript(`Hardware Error: ${event.error}. Check browser permissions.`);
-      setIsListening(false);
-    };
-
-    recognition.onend = () => setIsListening(false);
-    recognition.start();
   };
 
-  // The Text Engine (Fallback)
-  const handleTextSubmit = (e) => {
-    e.preventDefault();
-    if (!textInput.trim()) return;
-    setTranscript(`(Typed): ${textInput}`);
-    sendToBackend(textInput);
-    setTextInput('');
-  };
+  // 2. NOW we can safely call useEffect, because the function is loaded!
+  useEffect(() => {
+    startWakeWordListener();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   return (
-    <div style={{ padding: '2rem', fontFamily: 'sans-serif', color: 'white', backgroundColor: '#111', minHeight: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
-      <h2>ELE CORE: Interaction Layer</h2>
+    <div className="app-container">
+      <div className={`glow-orb ${status.toLowerCase().replace('...', '')}`}></div>
       
-      {/* Voice Button */}
-      <button 
-        onClick={handleVoiceInput}
-        style={{ padding: '1rem 2rem', fontSize: '1.2rem', backgroundColor: isListening ? '#ff4444' : '#4CAF50', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer', marginBottom: '1rem' }}
-      >
-        {isListening ? '🎙️ Listening (Speak clearly)...' : '🎙️ Tap to Speak'}
-      </button>
+      <div className="glass-panel">
+        <div className="header">
+          <h1 className="system-title">ELE <span>CORE</span></h1>
+          <div className={`status-badge ${status.toLowerCase().replace('...', '')}`}>
+            {status}
+          </div>
+        </div>
+        
+        <div className="chat-log">
+          {transcript && (
+            <div className="message user-message">
+              <span className="label">USER</span>
+              <p>{transcript}</p>
+            </div>
+          )}
+          {response && (
+            <div className="message ele-message">
+              <span className="label">ELE</span>
+              <p>{response}</p>
+            </div>
+          )}
+        </div>
 
-      {/* Text Fallback */}
-      <form onSubmit={handleTextSubmit} style={{ marginBottom: '2rem', display: 'flex', gap: '10px' }}>
-        <input 
-          type="text" 
-          value={textInput}
-          onChange={(e) => setTextInput(e.target.value)}
-          placeholder="Or type here to test backend..."
-          style={{ padding: '0.5rem', width: '300px', borderRadius: '4px', border: 'none' }}
-        />
-        <button type="submit" style={{ padding: '0.5rem 1rem', backgroundColor: '#333', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>Send</button>
-      </form>
-
-      {/* Display Screens */}
-      <div style={{ width: '100%', maxWidth: '500px', backgroundColor: '#222', padding: '1.5rem', borderRadius: '8px', marginBottom: '1rem' }}>
-        <strong>Input:</strong>
-        <p style={{ color: '#aaa' }}>{transcript || "Waiting for input..." }</p>
-      </div>
-
-      <div style={{ width: '100%', maxWidth: '500px', backgroundColor: '#222', padding: '1.5rem', borderRadius: '8px' }}>
-        <strong>ELE says:</strong>
-        <p style={{ color: '#00e5ff' }}>{aiResponse || "..." }</p>
+        <button 
+          className={`mic-button ${isListening ? 'active' : ''}`}
+          onClick={startListening}
+        >
+          {isListening ? 'Listening...' : 'Manual Override'}
+        </button>
       </div>
     </div>
   );
 }
+
+export default App;
