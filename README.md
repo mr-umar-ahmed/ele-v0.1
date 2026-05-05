@@ -66,3 +66,99 @@ We have successfully upgraded ELE from a click-to-talk chatbot to a hands-free, 
 1. Pull the latest code.
 2. Navigate to `/backend` and run `pip install -r requirements.txt`.
 3. You may need to install standard C++ build tools if `PyAudio` throws a compilation error on Windows.
+
+
+6 may 
+# ELE: Stealth Neural Assistant 🧠
+
+> An execution-focused, autonomous OS AI agent built for high-performance desktop automation and developer workflows.
+
+ELE is a real-time, voice-activated AI operating system bridge. It sits silently in the background, processes acoustic triggers with zero-download wake word technology, and executes intelligent routing to open applications, initialize development environments, or query the web.
+
+## ✨ Core Architecture & Features
+
+*   **Acoustic Stealth Daemon:** Continuous, lightweight background wake word detection ("Hey ELE") using highly optimized audio chunking—no heavy local model downloads required.
+*   **Zero-Latency Fast-Path:** A heuristic interceptor that catches basic system commands (e.g., "Open Chrome", "Mute Audio") and executes them instantly, bypassing the LLM entirely.
+*   **Dual-Engine Brain:** Cloud-first reasoning via OpenRouter with an automatic failsafe connection to local Ollama (Llama 3) models, ensuring 100% uptime even if the cloud drops.
+*   **Smart Workflow Router:** Dynamically maps spoken project names to local file paths, launches VS Code, and spins up local `npm run dev` servers autonomously.
+*   **Neural Dashboard UI:** A desktop-first React frontend featuring glassmorphism, 3D CSS orb animations, and a real-time hardware sync monitor.
+
+## 🛠️ Tech Stack
+
+*   **Frontend:** React, Vanilla CSS (Custom 3D Animations & Glassmorphism)
+*   **Backend:** Python 3.13, FastAPI
+*   **AI/LLM:** OpenAI SDK, OpenRouter, Ollama (Local)
+*   **Speech & Audio:** `SpeechRecognition`, `PyAudio`
+*   **System Automation:** `pyautogui`, `subprocess`, `os`
+*   **Memory:** SQLite (Short-term chat context)
+
+## 🚀 Getting Started
+
+### Prerequisites
+*   Node.js & npm
+*   Python 3.13+
+*   Microphone access
+
+### 1. Backend Setup
+Navigate to the backend directory and install the required Python packages.
+```bash
+cd backend
+python -m venv venv
+source venv/Scripts/activate  # On Windows
+pip install -r requirements.txt
+Create a .env file in the backend directory and add your OpenRouter API key:
+
+Code snippet
+OPENROUTER_API_KEY=your_api_key_here
+Start the ELE Core API:
+
+Bash
+uvicorn main:app
+(Note: Do not use the --reload flag during normal operation to prevent audio hardware lock collisions).
+
+2. Frontend Setup
+Navigate to the frontend directory and start the Neural Dashboard.
+
+Bash
+cd frontend
+npm install
+npm run dev
+🎙️ Usage
+Wait for the System Status to show IDLE.
+
+Say "Hey ELE" to wake the acoustic daemon.
+
+Once the UI transitions to LISTENING, state your command (e.g., "Open Calculator", "Launch Save Era", or "Search the web for the latest AI news").
+
+ELE will execute the OS-level command or respond via the neural text-to-speech UI.
+
+Author: Umar Ahmed
+
+
+---
+
+### 2. Push Your Code to GitHub
+
+Once you have saved the `README.md`, open your terminal at the root of your project folder (the folder containing both your `frontend` and `backend` folders) and run these commands step-by-step:
+
+**Step 1: Initialize the repository (if you haven't already)**
+```bash
+git init
+Step 2: Add all your files to the staging area
+
+Bash
+git add .
+Step 3: Commit your code with a descriptive message
+
+Bash
+git commit -m "V3 Release: Integrated Acoustic Daemon, Fast-Path Heuristics, and Neural Dashboard UI"
+Step 4: Connect to your GitHub repository
+(If you haven't created a blank repo on GitHub yet, go do that now. Grab the URL it gives you, which looks like [https://github.com/yourusername/ele-v0.1.git](https://github.com/yourusername/ele-v0.1.git))
+
+Bash
+git remote add origin YOUR_GITHUB_REPO_URL_HERE
+Step 5: Push the code to the main branch
+
+Bash
+git branch -M main
+git push -u origin main
