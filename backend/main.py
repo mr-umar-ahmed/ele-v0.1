@@ -6,10 +6,14 @@ import subprocess
 import difflib
 import time
 import shutil
+import psutil 
+import signal  # Added for shutdown logic
+import sys     # Added for shutdown logic
 from datetime import datetime
 from typing import Any, Dict, List
 
 from fastapi import FastAPI
+from controller import launch_app
 from pydantic import BaseModel
 from openai import OpenAI
 from dotenv import load_dotenv
@@ -24,6 +28,15 @@ load_dotenv()
 
 client_cloud = OpenAI(base_url="https://openrouter.ai/api/v1", api_key=os.getenv("OPENROUTER_API_KEY"))
 client_local = OpenAI(base_url="http://localhost:11434/v1", api_key="ollama")
+
+# ==========================================
+# ⚡ SHUTDOWN HANDLER (Immediate Kill)
+# ==========================================
+def signal_handler(sig, frame):
+    print("\n[ELE SYSTEM] 🛑 TERMINATING ALL THREADS...")
+    os._exit(0) # Hard exit to kill zombie microphone threads immediately
+
+signal.signal(signal.SIGINT, signal_handler)
 
 # ==========================================
 # 🗄️ SQLITE MEMORY LAYER
@@ -66,12 +79,14 @@ def perform_web_search(query: str) -> str:
         return f"Search offline. Error: {e}"
 
 def launch_dev_environment(project_query: str) -> str | None: 
-    base_path = r"C:\Users\DELL\OneDrive\Desktop\PROJECTS"
-    if not os.path.exists(base_path): return None
+    # Prioritize D:\Projects for your local setup
+    base_path = r"D:\Projects" 
+    if not os.path.exists(base_path): 
+        base_path = r"C:\Users\DELL\OneDrive\Desktop\PROJECTS"
+    
+    if not os.path.exists(base_path): return "Base path not found."
 
     existing_projects = [f for f in os.listdir(base_path) if os.path.isdir(os.path.join(base_path, f))]
-    
-    # Strict cutoff to prevent false positives (like Chrome triggering Code-Crew)
     matches = difflib.get_close_matches(project_query.lower(), [p.lower() for p in existing_projects], n=1, cutoff=0.45)
     
     if not matches: return None
@@ -84,66 +99,92 @@ def launch_dev_environment(project_query: str) -> str | None:
         if os.path.exists(os.path.join(full_path, "package.json")):
             launch_cmd = f'start cmd /k "cd /d {full_path} && title ELE Server: {target_folder} && npm run dev"'
             subprocess.Popen(launch_cmd, shell=True)
-            return f"Project {target_folder} initialized. Server started."
-        return f"Project {target_folder} opened."
+            return f"Project {target_folder} initialized. Dev server spinning up."
+        return f"Project {target_folder} opened in VS Code."
     except Exception as e:
         return f"Error opening project: {e}"
 
 def smart_open(target: str) -> str:
-    """The Ultimate OS Router: Decides whether to launch an app, open a project, or search Chrome."""
-    
-    # 1. Check for standard Web targets
     web_targets = {"youtube": "https://youtube.com", "google": "https://google.com", "github": "https://github.com"}
-    if target in web_targets:
-        os.system(f"start {web_targets[target]}")
+    if target.lower() in web_targets:
+        os.system(f"start {web_targets[target.lower()]}")
         return f"Opening {target}."
 
-    # 2. Check for known OS Applications
     app_aliases = {
         "chrome": "chrome", "calculator": "calc", "calc": "calc", "notepad": "notepad",
         "word": "winword", "excel": "excel", "powerpoint": "powerpnt", "spotify": "spotify",
         "code": "code", "vscode": "code"
     }
-    if target in app_aliases:
-        os.system(f"start {app_aliases[target]}")
+    
+    t_clean = target.lower().strip()
+    if t_clean in app_aliases:
+        os.system(f"start {app_aliases[t_clean]}")
         return f"Launching {target}."
 
-    # 3. Check if it's one of your Coding Projects
     project_result = launch_dev_environment(target)
-    if project_result:
-        return project_result
+    if project_result: return project_result
 
-    # 4. Check if the app is physically installed in the Windows PATH
     if shutil.which(target):
         os.system(f"start {target}")
         return f"Launching {target}."
 
-    # 5. FALLBACK: App not installed? Search for it on Google via Chrome!
-    print(f"[ELE CORE] '{target}' not found locally. Falling back to Web Search...")
     search_url = f"https://www.google.com/search?q={target.replace(' ', '+')}"
     os.system(f"start chrome \"{search_url}\"")
-    return f"I couldn't find {target} installed on your system. Searching Chrome instead."
+    return f"Searching Chrome for {target}."
 
 def get_quick_intent(text: str):
-    """Zero-Latency Interceptor"""
     t = text.lower().strip()
+    words = t.split()
     
-    # Check Launch Commands
-    for trigger in ["open", "launch", "run", "start"]:
+    # KILLSWITCH: Skip quick-logic for vague references so AI uses Memory
+    vague_references = ["it", "again", "that", "those", "previous", "one"]
+    if any(word in words for word in vague_references):
+        return None
+
+    # --- ENHANCED SYSTEM CONTROLS ---
+    if "maximize" in t:
+        pyautogui.hotkey('win', 'up')
+        return {"intent": "system_control", "reply": "Window maximized."}
+        
+    if "minimize" in t:
+        pyautogui.hotkey('win', 'd')
+        return {"intent": "system_control", "reply": "Showing desktop."}
+
+    if "task manager" in t:
+        os.system("taskmgr")
+        return {"intent": "system_control", "reply": "Opening Task Manager."}
+
+    if "volume up" in t:
+        for _ in range(5): pyautogui.press("volumeup")
+        return {"intent": "system_control", "reply": "Increasing volume."}
+
+    if "volume down" in t:
+        for _ in range(5): pyautogui.press("volumedown")
+        return {"intent": "system_control", "reply": "Decreasing volume."}
+
+    if any(phrase in t for phrase in ["start working on", "open project", "load project"]):
+        project_name = t.replace("start working on", "").replace("open project", "").replace("load project", "").strip()
+        reply = launch_dev_environment(project_name)
+        return {"intent": "project_launch", "reply": reply}
+
+    launch_triggers = ["open", "launch", "run", "start", "get me"]
+    for trigger in launch_triggers:
         if t.startswith(trigger):
             target = t.replace(trigger, "").strip()
+            if not target: continue
             reply = smart_open(target)
             return {"intent": "open_action", "reply": reply}
 
-    # Check Hardware Controls
     if "mute" in t:
         pyautogui.press("volumemute")
         return {"intent": "system_control", "reply": "Audio muted."}
+    
     if "lock" in t and "screen" in t:
         os.system("rundll32.exe user32.dll,LockWorkStation")
         return {"intent": "system_control", "reply": "Screen locked."}
     
     return None
+
 
 # ==========================================
 # 🚀 FASTAPI ROUTES
@@ -160,74 +201,67 @@ class AIResponse(BaseModel):
     intent: str
     action_required: bool
 
-# ==========================================
-# 🛑 WAKE WORD: ACOUSTIC DAEMON
-# ==========================================
+@app.get("/api/system_stats")
+async def get_system_stats():
+    return {
+        "cpu": psutil.cpu_percent(),
+        "memory": psutil.virtual_memory().percent,
+        "temp": "42°C"
+    }
+
+@app.post("/api/execute")
+async def execute_command(command: dict):
+    action = command.get("action")
+    target = command.get("target")
+    if action == "open":
+        app_aliases = {"calculator": "calc", "calc": "calc", "notepad": "notepad", "code": "code"}
+        final_target = app_aliases.get(target.lower(), target)
+        os.system(f"start {final_target}")
+        return {"status": "success"}
+    return {"status": "unknown_action"}
+
 @app.get("/api/wakeword")
 def listen_for_wakeword():
-    """Zero-download acoustic trigger loop."""
-    print("[ELE DAEMON] 🟢 Acoustic Stealth Mode Active. Waiting for 'Hey ELE'...")
     r = sr.Recognizer()
-    r.dynamic_energy_threshold = True
-    r.pause_threshold = 0.5 
-
-    # Phonetic variations to catch mispronunciations
-    trigger_words = ["ele", "ellie", "l a", "elliot", "ali", "hello", "hey"]
-
     with sr.Microphone() as source:
         while True:
             try:
                 audio = r.listen(source, timeout=1, phrase_time_limit=2)
                 text = r.recognize_google(audio).lower() # type: ignore
-                
-                print(f"[DAEMON HEARD] -> '{text}'")
-
-                if any(word in text for word in trigger_words):
-                    print("\n[ELE DAEMON] 🔥 WAKE WORD CONFIRMED! Releasing hardware...")
-                    time.sleep(0.3) 
+                if any(word in text for word in ["ele", "hey", "hello"]):
                     return {"status": "detected", "trigger": text}
-                    
-            except sr.WaitTimeoutError: continue
-            except Exception: continue
+            except: continue
 
-# ==========================================
-# 🎤 MAIN COMMAND LISTENER
-# ==========================================
 @app.get("/api/listen")
 async def listen_to_mic():
     r = sr.Recognizer()
-    r.pause_threshold = 0.8 
-
     with sr.Microphone() as source:
         try:
-            print("[ELE CORE] Microphone open. Listening for command...")
             audio = r.listen(source, timeout=5, phrase_time_limit=10)
             text = r.recognize_google(audio) # type: ignore
-            print(f"[ELE CORE] Transcribed: {text}")
             return {"text": text}
-        except Exception:
-            return {"error": "Silence or mic failure."}
+        except: return {"error": "Silence."}
 
-# ==========================================
-# 🧠 CORE CHAT ENGINE
-# ==========================================
 @app.post("/api/chat", response_model=AIResponse)
 async def process_chat(user_input: UserInput):
-    
     quick_fix = get_quick_intent(user_input.text)
     if quick_fix:
         return AIResponse(reply=quick_fix["reply"], intent=quick_fix["intent"], action_required=False)
 
     try:
-        messages: List[Any] = [
-            {"role": "system", "content": "You are ELE, an execution-focused OS agent. Respond in strict JSON: {\"reply\":\"Your response\",\"intent\":\"chat|search_web\",\"action_detail\":\"query\"}"},
-            *get_memory(limit=5),
+        history = get_memory(limit=5)
+        messages = [
+            {
+                "role": "system", 
+                "content": "You are ELE, an OS agent. If the user says 'again' or 'it', look at the last 'assistant' message in history, find the app name, and set 'action_detail' to THAT app name. Respond in JSON: {\"reply\":\"...\",\"intent\":\"open_action|chat|search_web\",\"action_detail\":\"...\"}"
+            },
+            *history,
             {"role": "user", "content": user_input.text}
         ]
 
         try:
             response = client_cloud.chat.completions.create(model="openrouter/free", messages=messages) # type: ignore
-        except Exception:
+        except:
             response = client_local.chat.completions.create(model="llama3", messages=messages) # type: ignore
         
         raw = (response.choices[0].message.content or "").strip()
@@ -239,12 +273,12 @@ async def process_chat(user_input: UserInput):
 
         if intent == "search_web":
             parsed["reply"] = perform_web_search(detail)
+        elif (intent == "open_action" or "open" in user_input.text.lower()) and detail:
+            parsed["reply"] = smart_open(detail)
 
         save_memory("user", user_input.text)
         save_memory("assistant", parsed.get("reply", ""))
-
         return AIResponse(reply=parsed.get("reply", "Understood."), intent=intent, action_required=False)
 
     except Exception as e:
-        print(f"CRITICAL ERROR: {e}")
-        return AIResponse(reply="System hitch, try again.", intent="error", action_required=False)
+        return AIResponse(reply=f"Core error: {e}", intent="error", action_required=False)

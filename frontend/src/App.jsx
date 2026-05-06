@@ -8,10 +8,52 @@ function App() {
   const [status, setStatus] = useState("IDLE");
   const isPollingRef = useRef(false);
 
+  // --- NEW: SYSTEM TELEMETRY STATE ---
+  const [systemStats, setSystemStats] = useState({ cpu: 0, memory: 0, status: "OFFLINE" });
+
+  // --- NEW: FETCH REAL SYSTEM STATS ---
+  useEffect(() => {
+    const fetchStats = async () => {
+      try {
+        const res = await fetch("http://127.0.0.1:8000/api/system_stats");
+        const data = await res.json();
+        setSystemStats({
+          cpu: data.cpu,
+          memory: data.memory,
+          status: "ACTIVE"
+        });
+      } catch (error) {
+        setSystemStats(prev => ({ ...prev, status: "OFFLINE" }));
+        console.error("[ELE] Telemetry link failed:", error);
+      }
+    };
+
+    const statsInterval = setInterval(fetchStats, 5000); // Update every 5s
+    fetchStats(); 
+    return () => clearInterval(statsInterval);
+  }, []);
+
+  // --- HANDSHAKE EXECUTION ---
+  const executeAction = async (action, target) => {
+    try {
+      console.log(`[ELE] Handshake: Executing ${action} on ${target}...`);
+      const res = await fetch('http://127.0.0.1:8000/api/execute', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action, target }),
+      });
+      const data = await res.json();
+      if (data.status === 'success') {
+        console.log(`🚀 ELE: Successfully launched ${target}`);
+      }
+    } catch (error) {
+      console.error('[ELE] Handshake failure:', error);
+    }
+  };
+
   // 1. STEALTH DAEMON
   const startWakeWordListener = async () => {
     if (isPollingRef.current) return;
-
     isPollingRef.current = true;
     console.log("[ELE] Daemon: Entering stealth mode...");
 
@@ -22,7 +64,6 @@ function App() {
       if (data.status === "detected") {
         console.log("[ELE] Daemon: Trigger detected!");
         setStatus("LISTENING");
-
         setTimeout(() => {
           isPollingRef.current = false;
           startListening();
@@ -56,7 +97,6 @@ function App() {
       setTranscript(data.text);
       setStatus("THINKING");
       setIsListening(false);
-
       await sendToBackend(data.text);
     } catch (error) {
       console.error("[ELE] Core: Mic synchronization failed.", error);
@@ -67,7 +107,7 @@ function App() {
     }
   };
 
-  // 3. BRAIN ENGINE
+  // // 3. BRAIN ENGINE (Updated with Vague Reference Filter)
   const sendToBackend = async (text) => {
     try {
       const res = await fetch("http://127.0.0.1:8000/api/chat", {
@@ -77,16 +117,25 @@ function App() {
       });
 
       const data = await res.json();
-
       setResponse(data.reply || `Executed command.`);
       setStatus("IDLE");
+
+      // FIX: Use the target name from the AI (data.action_detail) 
+      // instead of guessing from the raw text.
+      const validatedTarget = data.action_detail;
+
+      // Only execute if the target is NOT a vague word like "it" or "again"
+      const isVague = !validatedTarget || validatedTarget === "it" || validatedTarget === "again";
+
+      if (data.intent === "open_action" && !isVague) {
+          executeAction('open', validatedTarget);
+      }
 
       if (data.action_required && window.eleAPI) {
         window.eleAPI.executeTask(data);
       }
     } catch (error) {
-      console.error("[ELE] Core: Backend connection failure.", error);
-      setResponse("Critical core connection failure.");
+      console.error("[ELE] Core: Backend failure.", error);
       setStatus("ERROR");
     } finally {
       startWakeWordListener();
@@ -95,13 +144,9 @@ function App() {
 
   useEffect(() => {
     startWakeWordListener();
-    return () => {
-      isPollingRef.current = false;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    return () => { isPollingRef.current = false; };
   }, []);
 
-  // --- Date/Time helper for the HUD display ---
   const [dateTime, setDateTime] = useState(new Date());
   useEffect(() => {
     const timer = setInterval(() => setDateTime(new Date()), 1000);
@@ -110,13 +155,8 @@ function App() {
 
   return (
     <div className={`app-root ${status.toLowerCase()}`}>
-      {/* Background Grid Pattern */}
       <div className="hud-grid-overlay" />
-
-      {/* Main HUD Framework */}
       <div className="hud-container">
-        
-        {/* ---- Top Status Bar ---- */}
         <header className="hud-header">
           <div className="header-left">
             <span className="status-indicator">SYSTEM STATUS: <span className={`status-text ${status.toLowerCase()}`}>{status}</span></span>
@@ -134,23 +174,20 @@ function App() {
           </div>
         </header>
 
-        {/* ---- Main Content Area (3 Columns) ---- */}
         <main className="hud-main">
-          
-          {/* Left Panel: Mock System Data */}
+          {/* Left Panel: NOW WITH REAL DATA */}
           <aside className="hud-panel panel-left">
             <div className="panel-header">NETWORK_STATUS</div>
             <div className="panel-content monospace">
-              <div>UPLINK: ACTIVE</div>
+              <div>UPLINK: {systemStats.status}</div>
               <div>LATENCY: 24ms</div>
-              <div>IP: 192.168.1.103</div>
               <div className="separator"></div>
+              <div>CPU_LOAD: {systemStats.cpu}%</div>
+              <div>MEM_USAGE: {systemStats.memory}%</div>
               <div>CORE_TEMP: 42°C</div>
-              <div>FAN_SPEED: 1200 RPM</div>
             </div>
           </aside>
 
-          {/* Central Section: The Core Visual */}
           <section className="hud-center">
             <div className="core-visual-wrapper">
               <div className={`core-visual ${status.toLowerCase()}`}>
@@ -161,41 +198,34 @@ function App() {
                 </div>
               </div>
             </div>
-            
-            {/* Dialogue Display */}
             <div className="dialogue-display-hud">
               {status === "IDLE" && !transcript && !response && (
                 <div className="greeting-hud">Awaiting Command...</div>
               )}
-              {/* === FIX IS HERE ON THIS LINE === */}
               {transcript && <div className="transcript-hud monospace">{">>>"} {transcript}</div>}
               {response && <div className="response-hud monospace">ELE: {response}</div>}
             </div>
           </section>
 
-          {/* Right Panel: Mock Diagnostics */}
           <aside className="hud-panel panel-right">
             <div className="panel-header">DIAGNOSTICS</div>
             <div className="panel-content monospace">
-              <div>MEMORY: 48% USED</div>
+              <div>MEMORY: {systemStats.memory}% USED</div>
               <div>THREADS: 12 ACTIVE</div>
               <div className="separator"></div>
-              <div>LAST_CMD: NONE</div>
+              <div>LAST_CMD: {transcript || "NONE"}</div>
               <div>DAEMON_POLLING: TRUE</div>
             </div>
           </aside>
         </main>
 
-        {/* ---- Bottom Control Bar ---- */}
         <footer className="hud-footer">
           <div className="footer-left">
             <button className="hud-icon-btn">
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 12h18M3 6h18M3 18h18"/></svg>
             </button>
           </div>
-
           <div className="footer-center">
-            {/* Microphone Control */}
             <div className="mic-wrapper-hud">
               {isListening && (
                 <div className="mic-waves">
@@ -217,14 +247,12 @@ function App() {
               </button>
             </div>
           </div>
-
           <div className="footer-right">
             <button className="hud-icon-btn red-hover">
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18.36 6.64a9 9 0 1 1-12.73 0"/><line x1="12" y1="2" x2="12" y2="12"/></svg>
             </button>
           </div>
         </footer>
-
       </div>
     </div>
   );
