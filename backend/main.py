@@ -6,6 +6,7 @@ import subprocess
 import difflib
 import time
 import shutil
+import asyncio
 from datetime import datetime
 from typing import Any, Dict, List
 
@@ -16,6 +17,8 @@ from dotenv import load_dotenv
 from fastapi.middleware.cors import CORSMiddleware
 from duckduckgo_search import DDGS
 import speech_recognition as sr
+import edge_tts
+import pygame
 
 # ==========================================
 # ⚙️ SYSTEM INITIALIZATION
@@ -54,6 +57,39 @@ def get_memory(limit: int = 5) -> List[Dict[str, str]]:
     return [{"role": row[0], "content": row[1]} for row in reversed(rows)]
 
 # ==========================================
+# 🔊 VOICE REPLIES (Neural TTS)
+# ==========================================
+async def speak(text: str):
+    """Generates a sultry and attractive neural voice reply."""
+    # Sonia is the top free pick for a sophisticated, velvety tone
+    VOICE = "en-GB-SoniaNeural" 
+    OUTPUT_FILE = "reply.mp3"
+    
+    try:
+        # Stop any existing audio immediately
+        if pygame.mixer.get_init():
+            pygame.mixer.music.stop()
+            pygame.mixer.quit()
+
+        # --- SEDUCTIVE TUNING ---
+        # rate="-18%": Slower pace makes the voice feel more intimate.
+        # pitch="-12Hz": Lowering the pitch adds a warm, smoky resonance.
+        communicate = edge_tts.Communicate(text, VOICE, rate="-18%", pitch="-12Hz")
+        await communicate.save(OUTPUT_FILE)
+
+        # Initialize and play
+        pygame.mixer.init()
+        pygame.mixer.music.load(OUTPUT_FILE)
+        pygame.mixer.music.play()
+
+        while pygame.mixer.music.get_busy():
+            await asyncio.sleep(0.05)
+        
+        pygame.mixer.quit()
+    except Exception as e:
+        print(f"[VOICE ERROR] {e}")
+
+# ==========================================
 # 🛠️ ADVANCED TOOLKIT & SMART OPEN
 # ==========================================
 def perform_web_search(query: str) -> str:
@@ -68,17 +104,11 @@ def perform_web_search(query: str) -> str:
 def launch_dev_environment(project_query: str) -> str | None: 
     base_path = r"C:\Users\DELL\OneDrive\Desktop\PROJECTS"
     if not os.path.exists(base_path): return None
-
     existing_projects = [f for f in os.listdir(base_path) if os.path.isdir(os.path.join(base_path, f))]
-    
-    # Strict cutoff to prevent false positives (like Chrome triggering Code-Crew)
     matches = difflib.get_close_matches(project_query.lower(), [p.lower() for p in existing_projects], n=1, cutoff=0.45)
-    
     if not matches: return None
-
     target_folder = next(p for p in existing_projects if p.lower() == matches[0])
     full_path = os.path.join(base_path, target_folder)
-
     try:
         os.system(f'code "{full_path}"')
         if os.path.exists(os.path.join(full_path, "package.json")):
@@ -90,59 +120,49 @@ def launch_dev_environment(project_query: str) -> str | None:
         return f"Error opening project: {e}"
 
 def smart_open(target: str) -> str:
-    """The Ultimate OS Router: Decides whether to launch an app, open a project, or search Chrome."""
-    
-    # 1. Check for standard Web targets
     web_targets = {"youtube": "https://youtube.com", "google": "https://google.com", "github": "https://github.com"}
     if target in web_targets:
         os.system(f"start {web_targets[target]}")
         return f"Opening {target}."
-
-    # 2. Check for known OS Applications
-    app_aliases = {
-        "chrome": "chrome", "calculator": "calc", "calc": "calc", "notepad": "notepad",
-        "word": "winword", "excel": "excel", "powerpoint": "powerpnt", "spotify": "spotify",
-        "code": "code", "vscode": "code"
-    }
+    app_aliases = {"chrome": "chrome", "calculator": "calc", "calc": "calc", "notepad": "notepad", "code": "code"}
     if target in app_aliases:
         os.system(f"start {app_aliases[target]}")
         return f"Launching {target}."
-
-    # 3. Check if it's one of your Coding Projects
     project_result = launch_dev_environment(target)
-    if project_result:
-        return project_result
-
-    # 4. Check if the app is physically installed in the Windows PATH
+    if project_result: return project_result
     if shutil.which(target):
         os.system(f"start {target}")
         return f"Launching {target}."
-
-    # 5. FALLBACK: App not installed? Search for it on Google via Chrome!
-    print(f"[ELE CORE] '{target}' not found locally. Falling back to Web Search...")
     search_url = f"https://www.google.com/search?q={target.replace(' ', '+')}"
     os.system(f"start chrome \"{search_url}\"")
-    return f"I couldn't find {target} installed on your system. Searching Chrome instead."
+    return f"Searching Chrome for {target}."
 
 def get_quick_intent(text: str):
-    """Zero-Latency Interceptor"""
     t = text.lower().strip()
     
     # Check Launch Commands
     for trigger in ["open", "launch", "run", "start"]:
         if t.startswith(trigger):
             target = t.replace(trigger, "").strip()
-            reply = smart_open(target)
+            
+            # --- THE SPEED FIX ---
+            # Define the reply first
+            reply = f"Opening {target} now."
+            
+            # Trigger the voice immediately in the background
+            asyncio.create_task(speak(reply))
+            
+            # Then perform the OS action
+            smart_open(target)
+            
             return {"intent": "open_action", "reply": reply}
 
     # Check Hardware Controls
     if "mute" in t:
         pyautogui.press("volumemute")
+        asyncio.create_task(speak("Audio muted."))
         return {"intent": "system_control", "reply": "Audio muted."}
-    if "lock" in t and "screen" in t:
-        os.system("rundll32.exe user32.dll,LockWorkStation")
-        return {"intent": "system_control", "reply": "Screen locked."}
-    
+        
     return None
 
 # ==========================================
@@ -161,89 +181,108 @@ class AIResponse(BaseModel):
     action_required: bool
 
 # ==========================================
-# 🛑 WAKE WORD: ACOUSTIC DAEMON
+# 🛑 WAKE WORD: OPTIMIZED ACOUSTIC LOGIC
 # ==========================================
 @app.get("/api/wakeword")
 def listen_for_wakeword():
-    """Zero-download acoustic trigger loop."""
-    print("[ELE DAEMON] 🟢 Acoustic Stealth Mode Active. Waiting for 'Hey ELE'...")
+    print("[ELE DAEMON] 🟢 Performance Mode Active. Listening...")
     r = sr.Recognizer()
+    r.energy_threshold = 350 
     r.dynamic_energy_threshold = True
-    r.pause_threshold = 0.5 
+    r.dynamic_energy_adjustment_damping = 0.15 
+    r.pause_threshold = 0.4 
 
-    # Phonetic variations to catch mispronunciations
-    trigger_words = ["ele", "ellie", "l a", "elliot", "ali", "hello", "hey"]
+    trigger_variants = ["ele", "ellie", "ali", "hey", "hello", "l a", "elliot", "early"]
 
     with sr.Microphone() as source:
+        r.adjust_for_ambient_noise(source, duration=0.5)
         while True:
             try:
-                audio = r.listen(source, timeout=1, phrase_time_limit=2)
-                text = r.recognize_google(audio).lower() # type: ignore
-                
-                print(f"[DAEMON HEARD] -> '{text}'")
+                audio = r.listen(source, timeout=1, phrase_time_limit=1.5)
+                text = r.recognize_google(audio).lower()
+                words = text.split()
+                is_triggered = any(len(difflib.get_close_matches(w, trigger_variants, cutoff=0.7)) > 0 for w in words)
 
-                if any(word in text for word in trigger_words):
-                    print("\n[ELE DAEMON] 🔥 WAKE WORD CONFIRMED! Releasing hardware...")
-                    time.sleep(0.3) 
+                if is_triggered:
+                    print("\n[ELE DAEMON] 🔥 TRIGGER DETECTED!")
                     return {"status": "detected", "trigger": text}
-                    
-            except sr.WaitTimeoutError: continue
+            except (sr.WaitTimeoutError, sr.UnknownValueError): continue
             except Exception: continue
 
 # ==========================================
-# 🎤 MAIN COMMAND LISTENER
+# 🎤 MAIN COMMAND LISTENER (Optimized Spans)
 # ==========================================
 @app.get("/api/listen")
 async def listen_to_mic():
     r = sr.Recognizer()
-    r.pause_threshold = 0.8 
+    r.pause_threshold = 1.5 
+    r.non_speaking_duration = 0.5 
 
     with sr.Microphone() as source:
         try:
-            print("[ELE CORE] Microphone open. Listening for command...")
-            audio = r.listen(source, timeout=5, phrase_time_limit=10)
-            text = r.recognize_google(audio) # type: ignore
-            print(f"[ELE CORE] Transcribed: {text}")
+            print("[ELE CORE] 🎤 Microphone open. Listening...")
+            audio = r.listen(source, timeout=3, phrase_time_limit=15)
+            text = r.recognize_google(audio)
+            print(f"[ELE CORE] Transcribed: '{text}'")
             return {"text": text}
-        except Exception:
-            return {"error": "Silence or mic failure."}
+        except sr.WaitTimeoutError: return {"error": "Silence"}
+        except sr.UnknownValueError: return {"error": "Unintelligible"}
+        except Exception as e: return {"error": str(e)}
 
 # ==========================================
 # 🧠 CORE CHAT ENGINE
 # ==========================================
 @app.post("/api/chat", response_model=AIResponse)
 async def process_chat(user_input: UserInput):
-    
+    # 1. SHUT UP immediately when a new command starts
+    if pygame.mixer.get_init():
+        pygame.mixer.music.stop()
+
+    # 2. Check for Quick Intents (Opening Apps, etc.)
     quick_fix = get_quick_intent(user_input.text)
     if quick_fix:
+        # Voice reply is already handled inside get_quick_intent for speed
         return AIResponse(reply=quick_fix["reply"], intent=quick_fix["intent"], action_required=False)
 
     try:
-        messages: List[Any] = [
+        # 3. Prepare AI Context
+        messages = [
             {"role": "system", "content": "You are ELE, an execution-focused OS agent. Respond in strict JSON: {\"reply\":\"Your response\",\"intent\":\"chat|search_web\",\"action_detail\":\"query\"}"},
             *get_memory(limit=5),
             {"role": "user", "content": user_input.text}
         ]
 
+        # 4. Get AI Response (Cloud with Local Fallback)
         try:
             response = client_cloud.chat.completions.create(model="openrouter/free", messages=messages) # type: ignore
         except Exception:
             response = client_local.chat.completions.create(model="llama3", messages=messages) # type: ignore
         
         raw = (response.choices[0].message.content or "").strip()
-        if "```json" in raw: raw = raw.split("```json")[1].split("```")[0].strip()
+            
+        # 5. Clean JSON parsing logic (ASCII trick to avoid Pylance red lines)
+        tick = chr(96) * 3 
+        if f"{tick}json" in raw: 
+            raw = raw.split(f"{tick}json")[1].split(tick)[0].strip()
+        elif tick in raw:
+            raw = raw.split(tick)[1].split(tick)[0].strip()
+                
         parsed = json.loads(raw)
-        
         intent = parsed.get("intent", "chat")
-        detail = parsed.get("action_detail", "")
-
+        
+        # 6. Handle Web Search
         if intent == "search_web":
-            parsed["reply"] = perform_web_search(detail)
+            parsed["reply"] = perform_web_search(parsed.get("action_detail", ""))
 
+        # 7. Update Memory
         save_memory("user", user_input.text)
         save_memory("assistant", parsed.get("reply", ""))
 
-        return AIResponse(reply=parsed.get("reply", "Understood."), intent=intent, action_required=False)
+        # 8. Trigger Voice Reply & Return
+        final_reply = parsed.get("reply", "Understood.")
+        asyncio.create_task(speak(final_reply))
+
+        return AIResponse(reply=final_reply, intent=intent, action_required=False)
 
     except Exception as e:
         print(f"CRITICAL ERROR: {e}")
