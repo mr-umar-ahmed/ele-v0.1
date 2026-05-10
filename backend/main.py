@@ -4,6 +4,7 @@ import sqlite3
 import pyautogui
 import subprocess
 import difflib
+import re
 import time
 import shutil
 import asyncio
@@ -31,6 +32,9 @@ client_local = OpenAI(base_url="http://localhost:11434/v1", api_key="ollama")
 # ==========================================
 # 🗄️ SQLITE MEMORY LAYER
 # ==========================================
+# ==========================================
+# 🗄️ SQLITE MEMORY LAYER
+# ==========================================
 def init_db():
     conn = sqlite3.connect('ele_memory.db')
     c = conn.cursor()
@@ -49,6 +53,7 @@ def save_memory(role: str, content: str):
     conn.close()
 
 def get_memory(limit: int = 5) -> List[Dict[str, str]]:
+    """Short-Term Memory: Gets the most recent conversation history."""
     conn = sqlite3.connect('ele_memory.db')
     c = conn.cursor()
     c.execute("SELECT role, content FROM memory ORDER BY timestamp DESC LIMIT ?", (limit,))
@@ -56,6 +61,34 @@ def get_memory(limit: int = 5) -> List[Dict[str, str]]:
     conn.close()
     return [{"role": row[0], "content": row[1]} for row in reversed(rows)]
 
+def get_relevant_memory(query_text: str, limit: int = 2) -> List[Dict[str, str]]:
+    """Deep Memory: Scans long-term database for past conversations related to current keywords."""
+    conn = sqlite3.connect('ele_memory.db')
+    c = conn.cursor()
+    
+    # Clean text and extract words longer than 4 characters
+    clean_text = ''.join(e for e in query_text if e.isalnum() or e.isspace())
+    keywords = [word for word in clean_text.split() if len(word) > 4]
+    
+    if not keywords:
+        return []
+    
+    conditions = " OR ".join(["content LIKE ?" for _ in keywords])
+    params = [f"%{kw}%" for kw in keywords]
+    
+    try:
+        # Search for matches, excluding the most recent 5 to avoid duplicating short-term memory
+        query = f"SELECT role, content FROM memory WHERE id NOT IN (SELECT id FROM memory ORDER BY timestamp DESC LIMIT 5) AND ({conditions}) ORDER BY timestamp DESC LIMIT ?"
+        c.execute(query, (*params, limit))
+        rows = c.fetchall()
+    except Exception as e:
+        print(f"[MEMORY ERROR] {e}")
+        rows = []
+        
+    conn.close()
+    
+    # Tag them as "Past context" so the AI knows this is older information
+    return [{"role": "system", "content": f"Past context ({row[0]}): {row[1]}"} for row in rows]
 # ==========================================
 # 🔊 VOICE REPLIES (Neural TTS)
 # ==========================================
@@ -190,7 +223,11 @@ def listen_for_wakeword():
     r.energy_threshold = 350 
     r.dynamic_energy_threshold = True
     r.dynamic_energy_adjustment_damping = 0.15 
+    
+    # --- THE FIX ---
     r.pause_threshold = 0.4 
+    r.non_speaking_duration = 0.3 # MUST be <= pause_threshold to prevent crashes
+    # ---------------
 
     trigger_variants = ["ele", "ellie", "ali", "hey", "hello", "l a", "elliot", "early"]
 
@@ -238,21 +275,24 @@ async def process_chat(user_input: UserInput):
     if pygame.mixer.get_init():
         pygame.mixer.music.stop()
 
-    # 2. Check for Quick Intents (Opening Apps, etc.)
+    # 2. Check Quick Intents
     quick_fix = get_quick_intent(user_input.text)
     if quick_fix:
-        # Voice reply is already handled inside get_quick_intent for speed
         return AIResponse(reply=quick_fix["reply"], intent=quick_fix["intent"], action_required=False)
 
     try:
-        # 3. Prepare AI Context
+        # 3. Deep Memory
+        deep_memory = get_relevant_memory(user_input.text, limit=2)
+        
+        # Construct the AI's brain state (ANTI-BLEED PROMPT)
         messages = [
-            {"role": "system", "content": "You are ELE, an execution-focused OS agent. Respond in strict JSON: {\"reply\":\"Your response\",\"intent\":\"chat|search_web\",\"action_detail\":\"query\"}"},
-            *get_memory(limit=5),
-            {"role": "user", "content": user_input.text}
+            {"role": "system", "content": "You are ELE, an execution-focused OS agent. You will see chat history below, but you MUST ONLY answer the 'CURRENT QUESTION'. Ignore all previous questions. Respond with EXACTLY ONE strictly valid JSON object: {\"reply\":\"Your response\",\"intent\":\"chat|search_web\",\"action_detail\":\"query\"}."},
+            *deep_memory,          # Inject related past conversations
+            *get_memory(limit=4),  # Inject the immediate ongoing conversation (last 4 msgs)
+            {"role": "user", "content": f"CURRENT QUESTION: {user_input.text}"} # Forces the AI to focus here
         ]
 
-        # 4. Get AI Response (Cloud with Local Fallback)
+        # 4. Get AI Response
         try:
             response = client_cloud.chat.completions.create(model="openrouter/free", messages=messages) # type: ignore
         except Exception:
@@ -260,17 +300,28 @@ async def process_chat(user_input: UserInput):
         
         raw = (response.choices[0].message.content or "").strip()
             
-        # 5. Clean JSON parsing logic (ASCII trick to avoid Pylance red lines)
-        tick = chr(96) * 3 
-        if f"{tick}json" in raw: 
-            raw = raw.split(f"{tick}json")[1].split(tick)[0].strip()
-        elif tick in raw:
-            raw = raw.split(tick)[1].split(tick)[0].strip()
+        # 5. SURGICAL JSON EXTRACTION (The Forgiving Method)
+        try:
+            # Try to find a JSON block using Regex
+            json_match = re.search(r'\{.*?\}', raw, re.DOTALL)
+            
+            if json_match:
+                clean_raw = json_match.group(0)
+                parsed = json.loads(clean_raw)
+            else:
+                # If the AI ignored the rules and just spoke normally without brackets,
+                # DO NOT CRASH. Just wrap its raw text into a valid JSON dictionary automatically.
+                print(f"[JSON BYPASS] AI forgot brackets. Wrapping raw text: {raw}")
+                parsed = {"reply": raw, "intent": "chat", "action_detail": ""}
                 
-        parsed = json.loads(raw)
-        intent = parsed.get("intent", "chat")
+        except Exception as e:
+            print(f"[JSON PARSE ERROR] Error: {e} | Raw: {raw}")
+            parsed = {"reply": "I hit a processing snag, but I'm still listening.", "intent": "error"}
         
-        # 6. Handle Web Search
+        # --- THE MISSING LINE ---
+        intent = parsed.get("intent", "chat")
+
+        # 6. Web Search
         if intent == "search_web":
             parsed["reply"] = perform_web_search(parsed.get("action_detail", ""))
 
@@ -278,7 +329,7 @@ async def process_chat(user_input: UserInput):
         save_memory("user", user_input.text)
         save_memory("assistant", parsed.get("reply", ""))
 
-        # 8. Trigger Voice Reply & Return
+        # 8. Trigger Voice Reply
         final_reply = parsed.get("reply", "Understood.")
         asyncio.create_task(speak(final_reply))
 
