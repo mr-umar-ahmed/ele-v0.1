@@ -1,0 +1,215 @@
+.radar-widget {
+
+  position: absolute;
+
+  width: 180px;
+
+  height: 180px;
+
+  border-radius: 50%;
+
+  border: 1px solid rgba(180,180,180,0.08);
+
+  right: 120px;
+
+  top: 260px;
+
+  opacity: 0.22;
+
+  overflow: hidden;
+
+  z-index: 0;
+
+  pointer-events: none;
+
+  background:
+    radial-gradient(
+      circle,
+      rgba(180,180,180,0.03),
+      transparent 70%
+    );
+}
+
+.radar-ring {
+
+  position: absolute;
+
+  border-radius: 50%;
+
+  border: 1px solid rgba(180,180,180,0.15);
+}
+
+.radar-ring1 {
+
+  inset: 20px;
+}
+
+.radar-ring2 {
+
+  inset: 50px;
+}
+
+.radar-ring3 {
+
+  inset: 80px;
+}
+
+.radar-sweep {
+
+  position: absolute;
+
+  width: 50%;
+
+  height: 50%;
+
+  top: 50%;
+
+  left: 50%;
+
+  transform-origin: top left;
+
+  background:
+    linear-gradient(
+      45deg,
+      rgba(180,180,180,0.18),
+      transparent
+    );
+
+  animation:
+    radarRotate 4s linear infinite;
+}
+
+.radar-dot {
+
+  position: absolute;
+
+  width: 8px;
+
+  height: 8px;
+
+  border-radius: 50%;
+
+  background: #a0a0a0;
+
+  top: 35%;
+
+  left: 60%;
+
+  box-shadow:
+    0 0 10px #a0a0a0;
+}
+
+@keyframes radarRotate {
+
+  from {
+
+    transform: rotate(0deg);
+  }
+
+  to {
+
+    transform: rotate(360deg);
+  }
+}
+.hud-floating-btn {
+
+  position: absolute;
+
+  right: 28px;
+
+  width: 58px;
+
+  height: 58px;
+
+  border-radius: 50%;
+
+  border:
+    1px solid rgba(180,180,180,0.25);
+
+  background:
+    rgba(180,180,180,0.04);
+
+  display: flex;
+
+  align-items: center;
+
+  justify-content: center;
+
+  color: #7ee7ff;
+
+  backdrop-filter: blur(10px);
+
+  box-shadow:
+    0 0 18px rgba(180,180,180,0.08);
+
+  transition: all 0.3s ease;
+
+  z-index: 20;
+}
+.diag-bars {
+
+  margin-top: 25px;
+
+  display: flex;
+
+  flex-direction: column;
+
+  gap: 14px;
+}
+
+.diag-row {
+
+  display: flex;
+
+  align-items: center;
+
+  gap: 10px;
+
+  font-size: 12px;
+
+  color: #7ee7ff;
+}
+
+.diag-track {
+
+  flex: 1;
+
+  height: 8px;
+
+  border-radius: 999px;
+
+  background:
+    rgba(255,255,255,0.04);
+
+  overflow: hidden;
+}
+
+.diag-fill {
+
+  height: 100%;
+
+  border-radius: 999px;
+
+  background:
+    linear-gradient(
+      90deg,
+      rgba(180,180,180,0.25),
+      rgba(180,180,180,0.9)
+    );
+
+  animation:
+    diagPulse 2s ease-in-out infinite alternate;
+}
+
+@keyframes diagPulse {
+
+  from {
+
+    opacity: 0.5;
+  }
+
+  to {
+
+    opacity: 1;
+  }
+}

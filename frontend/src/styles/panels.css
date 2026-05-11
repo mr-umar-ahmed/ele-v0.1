@@ -1,0 +1,123 @@
+.voice-console {
+
+  width: 700px;
+
+  min-height: 220px;
+
+  margin-top: 40px;
+
+  background:
+    rgba(0,255,255,0.03);
+
+  border:
+    1px solid rgba(0,255,255,0.18);
+
+  border-radius: 24px;
+
+  overflow: hidden;
+
+  box-shadow:
+    0 0 25px rgba(0,255,255,0.08);
+
+  backdrop-filter: blur(10px);
+}
+
+.console-header {
+
+  padding: 16px 24px;
+
+  border-bottom:
+    1px solid rgba(0,255,255,0.15);
+
+  font-size: 14px;
+
+  letter-spacing: 3px;
+
+  color: #7ee7ff;
+}
+
+.console-body {
+
+  padding: 25px;
+
+  display: flex;
+  flex-direction: column;
+
+  gap: 18px;
+
+  min-height: 130px;
+}
+
+.console-line {
+
+  display: flex;
+
+  gap: 14px;
+
+  align-items: flex-start;
+}
+
+.console-tag {
+
+  color: #00e5ff;
+
+  font-weight: bold;
+
+  min-width: 70px;
+}
+
+.console-content {
+
+  color: #dffcff;
+
+  line-height: 1.6;
+}
+
+.user-line .console-content {
+
+  color: #ffffff;
+}
+
+.ai-line .console-content {
+
+  color: #7ee7ff;
+}
+
+.console-idle {
+
+  opacity: 0.6;
+
+  letter-spacing: 2px;
+}
+
+.console-footer {
+
+  padding: 14px 24px;
+
+  border-top:
+    1px solid rgba(0,255,255,0.15);
+
+  font-size: 13px;
+
+  letter-spacing: 2px;
+}
+
+.status-text {
+
+  margin-left: 10px;
+}
+
+.status-text.listening {
+
+  color: #c6ff00;
+}
+
+.status-text.thinking {
+
+  color: #00e5ff;
+}
+
+.status-text.error {
+
+  color: #ff4d6d;
+}
